@@ -3,6 +3,7 @@ library(RJSONIO)
 library(seqinr)
 library(KEGGREST)
 library(RColorBrewer)
+library(ape)
 
 setwd("U:/genome_example") #set your working directory
 
@@ -49,7 +50,54 @@ kotab[,5] = unlist(lapply(strsplit(kotab[,5]," "),function(x){paste(x[5:length(x
 kotab[,6] = unlist(lapply(strsplit(kotab[,6]," "),function(x){paste(x[7:length(x)],collapse=" ")}))
 
 #######################################################################################
-########################### assemble all genome info
+########################### assemble all genome info - use this part if you have the annotation as gff
+#######################################################################################
+
+lvl1cat = c("Genetic Information Processing","Metabolism",
+            "Environmental Information Processing") #select 3 categories from level 1 of the annotation
+lvl2cat = c("Metabolism of cofactors and vitamins","Amino acid metabolism",
+            "Carbohydrate metabolism") #select 3 categories from level 2 of the annotation
+
+catcol = c(brewer.pal(7,"Accent"),"grey90") #define the colors to be used for the genes
+names(catcol) = c(lvl1cat,"RNA",lvl2cat,"Other") #define which colors correspond to which category
+
+gff_file <- read.gff("820.4617.ec-stripped.gff") #import gene annotation
+
+annot <- data.frame(id=NA,annot=NA,start=NA,end=NA,length=NA,mid=NA,
+                    ko=NA,lvl1=NA,lvl2=NA,lvl3=NA) #create a table with all neccessary gene information
+for(i in 1:nrow(gff_file)){ #iterate through all features and fill the table with information
+  annot[i,"id"] = gsub("ID=","",unlist(lapply(strsplit(gff_file[,ncol(gff_file)],";"),function(x){x[1]})))[i]
+  annot[i,"annot"] = gff_file[i,ncol(gff_file)]
+  annot[i,"start"] = gff_file[i,"start"]
+  annot[i,"end"] = gff_file[i,"end"]
+  annot[i,"orientation"] = gff_file[i,"strand"]
+  annot[i,"length"] = gff_file[i,"end"]-gff_file[i,"start"]
+  annot[i,"mid"] = annot[i,"start"]+(annot[i,"length"]/2)
+  
+  kos <- kotab[annot[i,"id"],]
+  if(!is.na(kos[,1])){
+    annot[i,"ko"] = as.character(kos[,2])
+    annot[i,"lvl1"] = as.character(kos$lvl1)
+    annot[i,"lvl2"] = as.character(kos$lvl2)
+    annot[i,"lvl3"] = as.character(kos$lvl3)
+  }
+  #if(is.null(allfeat[[i]]$type)){allfeat[[i]]$type="other"}
+  if(as.character(gff_file[i,"type"]) %in% c("tRNA","RNA","rRNA","rna","rrna","trna")){
+    annot[i,"lvl1"] = "RNA"
+    annot[i,"lvl2"] = "RNA"
+    annot[i,"lvl3"] = "RNA"
+  }
+}
+#Assign color of right category for each gene
+annot$class = NA
+for(i in lvl2cat){annot$class[which(annot$lvl2==i)]=i}
+for(i in lvl1cat){annot$class[intersect(which(annot$lvl1==i),which(is.na(annot$class)))]=i}
+annot$class[intersect(which(annot$lvl1=="RNA"),which(is.na(annot$class)))] = "RNA"
+annot$class[which(is.na(annot$class))] = "Other"
+annot$color = catcol[as.character(annot$class)]
+
+#######################################################################################
+########################### assemble all genome info - use this part if you have the annotation as json from kbase
 #######################################################################################
 
 lvl1cat = c("Genetic Information Processing","Metabolism",
@@ -133,7 +181,7 @@ par(mar=c(2, 2, 2, 2));# create a canvas
 plot(c(1,800), c(1,800), type="n", axes=FALSE, xlab="", ylab="", main="");
 
 #add the different circles of the genome plot
-chrdat = cbind("chr1","270","630","0",annot$gsize[1]/1000,"0",annot$gsize[1]/1000)
+chrdat = cbind("chr1","270","630","0",length(gseq$Contig_1_denovo)/1000,"0",length(gseq$Contig_1_denovo)/1000)
 colnames(chrdat) = c("seg.name","angle.start","angle.end","seg.sum.start","seg.sum.end","seg.start","seg.end")
 genomedat <- data.frame("chr"="chr1","start"=annot$start/1000,
                       "end"=annot$end/1000,"value"=factor(annot$class),
